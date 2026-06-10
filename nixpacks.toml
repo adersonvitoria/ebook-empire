@@ -14,7 +14,10 @@ cmds = [
 [phases.build]
 cmds = [
   "pnpm --filter @ebook-empire/api run prisma:generate",
-  "pnpm --filter @ebook-empire/api build",
+  # Builda a API E suas dependencias de workspace (core/adapters/agents) em ordem
+  # topologica — o "..." inclui as deps. Sem isso, os dist/ de core/agents/adapters
+  # nao existem e o runtime quebra com "Cannot find module @ebook-empire/agents".
+  "pnpm --filter @ebook-empire/api... run build",
 ]
 
 [start]
