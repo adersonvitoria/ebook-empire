@@ -77,6 +77,9 @@ const envSchema = z.object({
   PAYMENT_PROVIDER: z.enum(['asaas', 'mercado_pago']).default('asaas'),
   ASAAS_API_KEY: z.string().optional().default(''),
   ASAAS_WEBHOOK_TOKEN: z.string().optional().default(''),
+  // Base da API Asaas. Vazio => producao (https://api.asaas.com/v3).
+  // Sandbox: https://sandbox.asaas.com/api/v3 (confirme no painel sandbox do Asaas).
+  ASAAS_BASE_URL: z.string().optional().default(''),
 
   // Meta (Instagram + Ads)
   META_GRAPH_TOKEN: z.string().optional().default(''),

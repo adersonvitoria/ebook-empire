@@ -90,6 +90,7 @@ async function resolvePorts(): Promise<Ports> {
       PAYMENT_PROVIDER: env.PAYMENT_PROVIDER,
       ASAAS_API_KEY: env.ASAAS_API_KEY,
       ASAAS_WEBHOOK_TOKEN: env.ASAAS_WEBHOOK_TOKEN,
+      ASAAS_BASE_URL: env.ASAAS_BASE_URL || undefined,
     }),
     email: need('createEmailAdapter')({
       useStubs: env.USE_STUBS,
