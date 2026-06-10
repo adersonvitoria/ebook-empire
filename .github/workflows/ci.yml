@@ -1,0 +1,78 @@
+name: CI
+
+# Gate de qualidade: roda em todo push e em cada Pull Request.
+# Replica a sequencia validada localmente: prisma generate -> build core+agents
+# (apps/api consome dist/.d.ts) -> typecheck -> testes unitarios (vitest).
+# Os e2e (apps/api/scripts/e2e*.ts) NAO rodam aqui — sao integracao e usam um
+# fluxo proprio; rode-os localmente com `pnpm --filter @ebook-empire/api e2e*`.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: typecheck + unit tests
+    runs-on: ubuntu-latest
+
+    # Postgres efemero para os testes que instanciam o Prisma Client.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ebook_empire
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Env minimo exigido pelo Zod em apps/api/src/env.ts (fail-fast no boot/import).
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ebook_empire?schema=public
+      JWT_SECRET: ci-dummy-secret-not-a-real-secret
+      NODE_ENV: test
+      USE_STUBS: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm --filter @ebook-empire/api run prisma:generate
+
+      - name: Apply migrations (migrate deploy)
+        run: pnpm --filter @ebook-empire/api exec prisma migrate deploy --schema ../../prisma/schema.prisma
+
+      - name: Build core + agents (dist consumido por apps/api)
+        run: |
+          pnpm --filter @ebook-empire/core build
+          pnpm --filter @ebook-empire/agents build
+
+      - name: Typecheck (todos os projetos)
+        run: pnpm -r typecheck
+
+      - name: Unit tests (vitest)
+        run: pnpm -r test
