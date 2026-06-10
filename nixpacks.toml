@@ -10,7 +10,7 @@ nixPkgs = ["nodejs_20"]
 # no PATH — ao contrario de `npm i -g pnpm`, cujo prefixo global nao fica no PATH
 # do shell de login do proximo RUN (causa de "pnpm: command not found").
 cmds = [
-  "corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --frozen-lockfile",
+  "corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --frozen-lockfile --prod=false",
 ]
 
 [phases.build]
