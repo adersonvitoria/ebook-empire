@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CrmTabs } from '../page';
+import { CrmTabs } from '../crm-tabs';
 import { API_BASE, ApiError, formatDateTime } from '@/lib/api';
 
 // ------------------------------------------------------------

@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CrmTabs } from '../page';
+import { CrmTabs } from '../crm-tabs';
 import { api, ApiError, formatDateTime, type GuardrailConfig } from '@/lib/api';
 
 function Field({

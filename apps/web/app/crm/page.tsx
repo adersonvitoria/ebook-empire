@@ -17,6 +17,7 @@ import {
   type SectorStatus,
   type Sector,
 } from '@/lib/api';
+import { CrmTabs } from './crm-tabs';
 
 // Rotulos pt-BR dos setores.
 const SECTOR_LABELS: Record<Sector, string> = {
@@ -53,34 +54,6 @@ const STATUS_TEXT: Record<SectorStatus, string> = {
   WARNING: 'text-amber-400',
   CRITICAL: 'text-red-400',
 };
-
-// --- Sub-navegacao do modulo CRM (compartilhada visualmente entre as pages) ---
-export function CrmTabs({ active }: { active: string }) {
-  const tabs = [
-    { href: '/crm', label: 'Visao geral' },
-    { href: '/crm/problems', label: 'Problemas' },
-    { href: '/crm/actions', label: 'Acoes' },
-    { href: '/crm/approvals', label: 'Aprovacoes' },
-    { href: '/crm/settings', label: 'Guardrails' },
-  ];
-  return (
-    <nav className="mb-6 flex flex-wrap gap-1 border-b border-neutral-800">
-      {tabs.map((t) => (
-        <Link
-          key={t.href}
-          href={t.href}
-          className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
-            t.href === active
-              ? 'border-brand text-white'
-              : 'border-transparent text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          {t.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
 
 function TrendBadge({ trend }: { trend?: number | null }) {
   if (trend === null || trend === undefined || trend === 0) {

@@ -7,7 +7,7 @@
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { CrmTabs } from '../page';
+import { CrmTabs } from '../crm-tabs';
 import {
   api,
   ApiError,
