@@ -1,0 +1,23 @@
+# Banco de dados dedicado do Ebook Empire.
+# Porta 5433 para nao conflitar com o PostgreSQL nativo do Windows (5432).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ebook-empire-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ebook
+      POSTGRES_PASSWORD: ebook
+      POSTGRES_DB: ebook_empire
+    ports:
+      - "5433:5432"
+    volumes:
+      - ebook_empire_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ebook -d ebook_empire"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  ebook_empire_pgdata:

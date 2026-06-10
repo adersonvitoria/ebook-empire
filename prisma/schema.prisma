@@ -1,0 +1,878 @@
+// Ebook Empire — schema fonte da verdade.
+// Convencoes globais (ver docs/ARCHITECTURE.md secao 3):
+//  - IDs: String @id @default(cuid())
+//  - Dinheiro: SEMPRE Int em centavos BRL (priceCents, amountCents, spendCents, ...). Nunca Float/Decimal.
+//  - currency: String @default("BRL")
+//  - Timestamps em UTC; conversao para America/Sao_Paulo apenas no group-by de KPI.
+//  - Event, AdInsight e AgentRun sao majoritariamente append-only.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum EbookStatus {
+  DRAFT
+  GENERATING
+  READY
+  PUBLISHED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  DELIVERED
+  REFUNDED
+  CANCELED
+  EXPIRED
+}
+
+// Alinhado ao Asaas: CONFIRMED = autorizado, RECEIVED = liquidado.
+// Gatilho de entrega = CONFIRMED OU RECEIVED.
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  RECEIVED
+  OVERDUE
+  REFUNDED
+  FAILED
+}
+
+enum PaymentProvider {
+  ASAAS
+  MERCADO_PAGO
+  HOTMART
+  KIWIFY
+}
+
+enum PaymentMethod {
+  PIX
+  BOLETO
+  CREDIT_CARD
+}
+
+enum DeliveryStatus {
+  GRANTED
+  ACTIVE
+  EXHAUSTED
+  EXPIRED
+  REVOKED
+}
+
+enum SocialStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum AdStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum AgentRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum AgentName {
+  ORCHESTRATOR
+  CONTENT
+  SALES
+  DELIVERY
+  SOCIAL
+  TRAFFIC
+  ANALYTICS
+  OPERATIONS // COO — agente do CRM / Command Center (loga seus runs como OPERATIONS)
+  MARKET_RESEARCH // setor de analise de mercado (time Specialist/Strategist/Executor)
+  EBOOK_QA // setor de QA / auditoria de ebooks (time Specialist/Strategist/Executor)
+  MARKETPLACE // sincronizacao de listings em marketplaces externos (Hotmart/Kiwify)
+  AFFILIATE // prospeccao e ativacao de afiliados
+  FUNNEL // otimizacao de funil (landing / upsell / carrinho)
+}
+
+// Papel dentro de um TIME de setor (framework Specialist/Strategist/Executor).
+// Gravado opcionalmente em AgentRun.role para observabilidade dos times.
+enum Role {
+  SPECIALIST
+  STRATEGIST
+  EXECUTOR
+}
+
+// Estado de uma oportunidade de mercado descoberta pelo time MARKET_RESEARCH.
+enum MarketOpportunityStatus {
+  PENDING
+  SELECTED
+  USED
+  DISCARDED
+}
+
+// Veredito final (DETERMINISTICO no auditor) de uma auditoria de ebook.
+enum EbookAuditVerdict {
+  PASS
+  NEEDS_FIX
+  FAIL
+}
+
+enum EventType {
+  // funil de aquisicao -> conversao -> entrega
+  IMPRESSION
+  CLICK
+  LANDING_VIEW
+  CHECKOUT_STARTED
+  PAYMENT_PENDING
+  PAID
+  DELIVERED
+  REFUNDED
+  // social
+  SOCIAL_VIEW
+  SOCIAL_ENGAGEMENT
+  // operacionais internos (emitidos pelos agentes)
+  EBOOK_PUBLISHED
+  SOCIAL_POSTED
+  CAMPAIGN_CREATED
+  BUDGET_REALLOCATED
+  AD_SPEND
+  INSIGHT_INGESTED
+  // mercado + QA (times MARKET_RESEARCH / EBOOK_QA)
+  MARKET_OPPORTUNITY_RANKED
+  EBOOK_AUDITED
+  EBOOK_RELAUNCHED
+  // producao autonoma — marketplace / afiliados / funil
+  AFFILIATE_CONTACTED
+  UPSELL_SENT
+  UPSELL_CONVERTED
+}
+
+// ------------------------------------------------------------
+// CRM / Command Center (operacao autonoma — COO).
+// HealthStatus NAO e enum: derivado de score on-read (statusFromScore em core/crm.ts).
+// Problem.type NAO e enum: String (codigo da regra), validado por z.enum em core/crm.ts.
+// ------------------------------------------------------------
+enum OperationalSector {
+  CONTENT
+  SALES
+  DELIVERY
+  SOCIAL
+  TRAFFIC
+  ANALYTICS
+  ORCHESTRATION
+  MARKETPLACE
+  FUNNEL
+  AFFILIATE
+}
+
+enum ProblemStatus {
+  OPEN
+  DIAGNOSING
+  REMEDIATING
+  RESOLVED
+  IGNORED
+}
+
+enum RiskTier {
+  LOW
+  HIGH
+}
+
+enum ActionKind {
+  RETRY_DELIVERIES
+  GENERATE_EBOOK
+  GENERATE_SOCIAL_POSTS
+  REGENERATE_LANDING_COPY
+  RECOMPUTE_KPIS
+  RERUN_AGENT
+  INCREASE_AD_BUDGET
+  DECREASE_AD_BUDGET
+  PAUSE_CAMPAIGN
+  ADJUST_PRICE
+  GENERATE_MORE_EBOOKS
+  PAUSE_LISTING
+  BOOST_AFFILIATE_OUTREACH
+  SEND_AFFILIATE_EMAIL
+}
+
+enum ActionStatus {
+  PROPOSED
+  QUEUED
+  APPROVED
+  REJECTED
+  APPLIED
+  FAILED
+  ROLLED_BACK
+}
+
+enum ExecutionTrigger {
+  AUTO
+  HUMAN
+}
+
+// ------------------------------------------------------------
+// ALERTAS EXTERNOS (Command Center — Feature 1).
+// Aditivos; nao quebram nada existente.
+// ------------------------------------------------------------
+enum AlertEvent {
+  KILL_SWITCH_ON
+  KILL_SWITCH_OFF
+  SECTOR_CRITICAL
+  ACTION_AUTO_FAILED
+  ACTION_HIGH_QUEUED
+}
+
+enum AlertChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  SENT
+  FAILED
+  SUPPRESSED
+}
+
+// ------------------------------------------------------------
+// PRODUCAO AUTONOMA — afiliados / marketplaces (aditivos).
+// ------------------------------------------------------------
+enum AffiliateStatus {
+  PROSPECT
+  ACTIVE
+  PAUSED
+  UNSUBSCRIBED
+}
+
+enum OutreachChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum OutreachStatus {
+  SENT
+  DELIVERED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+// ============================================================
+// MODELOS
+// ============================================================
+
+model Customer {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  phone           String?
+  asaasCustomerId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orders         Order[]
+  events         Event[]
+  deliveryGrants DeliveryGrant[]
+
+  @@index([asaasCustomerId])
+}
+
+model Ebook {
+  id              String      @id @default(cuid())
+  title           String
+  niche           String
+  slug            String      @unique
+  status          EbookStatus @default(DRAFT)
+  outline         Json?
+  contentMarkdown String?     @db.Text
+  pdfPath         String?
+  coverImagePath  String?
+  language        String      @default("pt-BR")
+  generatedByRunId String?
+  // Oportunidade de mercado que originou o ebook (GATE 1 — materializa a
+  // evidencia: e impossivel um Ebook PUBLISHED sem oportunidade rastreavel).
+  marketOpportunityId String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  generatedByRun    AgentRun?          @relation("EbookGeneratedBy", fields: [generatedByRunId], references: [id])
+  marketOpportunity MarketOpportunity? @relation("EbookOpportunity", fields: [marketOpportunityId], references: [id])
+
+  products       Product[]
+  orders         Order[]
+  deliveryGrants DeliveryGrant[]
+  audits         EbookAudit[]
+
+  @@index([status])
+  @@index([niche])
+  @@index([marketOpportunityId])
+}
+
+// Oferta vendavel sobre um Ebook. Permite multiplos precos/bundles
+// sobre o mesmo conteudo (ancora R$47 / order-bump R$27 / upsell R$97).
+model Product {
+  id          String   @id @default(cuid())
+  ebookId     String
+  name        String
+  slug        String   @unique
+  description String?
+  priceCents  Int
+  currency    String   @default("BRL")
+  active      Boolean  @default(true)
+  // Distribuicao externa (marketplaces Hotmart/Kiwify) — opcionais/aditivos.
+  channel                String? // canal de venda (ex. "DIRECT", "HOTMART", "KIWIFY")
+  externalProductId      String? // id do produto no provedor externo
+  marketplaceUrl         String?
+  affiliateCommissionPct Int? // comissao default de afiliado (0..100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ebook    Ebook                @relation(fields: [ebookId], references: [id])
+  orders   Order[]
+  events   Event[]
+  listings MarketplaceListing[]
+
+  @@index([ebookId])
+  @@index([active])
+  @@index([externalProductId])
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  customerId    String
+  productId     String
+  ebookId       String // denormalizado para entrega
+  status        OrderStatus @default(PENDING)
+  priceCents    Int // SNAPSHOT do Product no momento da compra
+  currency      String      @default("BRL")
+
+  // atribuicao (UTMs snapshotadas)
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+  visitorId   String?
+  adCampaignId String?
+
+  asaasPaymentId String?
+  // Pedidos originados em marketplaces externos (Hotmart/Kiwify) — aditivos.
+  // NB: Order ja possui productId (FK obrigatoria para Product); reaproveitado.
+  externalOrderId     String?
+  marketplaceProvider String? // provider externo (ex. "HOTMART", "KIWIFY")
+  paidAt         DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  product       Product        @relation(fields: [productId], references: [id])
+  ebook         Ebook          @relation(fields: [ebookId], references: [id])
+  payment       Payment?
+  deliveryGrant DeliveryGrant?
+  events        Event[]
+  adCampaign    AdCampaign?    @relation(fields: [adCampaignId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([paidAt])
+  @@index([customerId])
+  @@index([productId])
+  @@index([utmCampaign])
+  @@index([externalOrderId])
+}
+
+// 1:1 logico com Order; tabela propria orientada a webhook.
+model Payment {
+  id                String          @id @default(cuid())
+  orderId           String          @unique
+  provider          PaymentProvider
+  method            PaymentMethod   @default(PIX)
+  providerPaymentId String
+  status            PaymentStatus   @default(PENDING)
+  amountCents       Int
+  currency          String          @default("BRL")
+  pixQrCode         String?
+  pixCopyPaste      String?
+  dueDate           DateTime?
+  paidAt            DateTime?
+  raw               Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([provider, providerPaymentId])
+  @@index([status])
+  @@index([paidAt])
+}
+
+// Token de download de uso limitado. signedUrl NUNCA persistida.
+model DeliveryGrant {
+  id            String         @id @default(cuid())
+  orderId       String         @unique
+  ebookId       String
+  customerId    String
+  tokenHash     String         @unique // sha256 do token plano (token plano so no email/URL)
+  status        DeliveryStatus @default(GRANTED)
+  maxDownloads  Int            @default(5)
+  downloadCount Int            @default(0)
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  emailSentAt   DateTime?
+  lastDownloadAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  order    Order    @relation(fields: [orderId], references: [id])
+  ebook    Ebook    @relation(fields: [ebookId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model SocialPost {
+  id             String       @id @default(cuid())
+  agentRunId     String?
+  platform       String       @default("instagram")
+  caption        String       @db.Text
+  mediaPaths     String[]
+  hashtags       String[]
+  status         SocialStatus @default(DRAFT)
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  externalPostId String?
+  permalink      String?
+  productId      String?
+  attempts       Int          @default(0)
+  metrics        Json?
+  error          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  agentRun AgentRun? @relation("SocialPostByRun", fields: [agentRunId], references: [id])
+
+  @@index([status, scheduledAt])
+  @@index([externalPostId])
+}
+
+model AdCampaign {
+  id                 String   @id @default(cuid())
+  name               String
+  objective          String
+  status             AdStatus @default(DRAFT)
+  platform           String   @default("meta")
+  externalCampaignId String?
+  productId          String?
+  dailyBudgetCents   Int?
+  totalSpendCents    Int      @default(0)
+  utmCampaign        String? // chave de atribuicao
+  targeting          Json?
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  insights AdInsight[]
+  orders   Order[]
+  events   Event[]
+
+  @@index([status])
+  @@index([utmCampaign])
+  @@index([externalCampaignId])
+}
+
+// Snapshot diario por campanha (time-series). Upsert idempotente pelo TrafficAgent/AnalyticsAgent.
+model AdInsight {
+  id           String   @id @default(cuid())
+  campaignId   String
+  date         DateTime @db.Date
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  spendCents   Int      @default(0)
+  conversions  Int      @default(0)
+  revenueCents Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, date])
+  @@index([date])
+}
+
+// Log universal de execucao de agente (append-only).
+model AgentRun {
+  id         String         @id @default(cuid())
+  agent      AgentName
+  status     AgentRunStatus @default(RUNNING)
+  cycleId    String?
+  // Papel + setor do TIME que originou o run (OPCIONAIS — runs antigos/diretos
+  // ficam null). String (nao enum) para `sector`: cobre os 9 setores dos times
+  // sem acoplar a uma migracao do enum OperationalSector (que tem 7).
+  role       Role?
+  sector     String?
+  startedAt  DateTime       @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  input      Json?
+  output     Json?
+  metrics    Json?
+  error      String?
+  tokensIn   Int?
+  tokensOut  Int?
+  costCents  Int?
+  createdAt  DateTime       @default(now())
+
+  ebooks         Ebook[]             @relation("EbookGeneratedBy")
+  socialPosts    SocialPost[]        @relation("SocialPostByRun")
+  opportunities  MarketOpportunity[] @relation("OpportunityGeneratedBy")
+  ebookAudits    EbookAudit[]        @relation("EbookAuditByRun")
+
+  @@index([agent, startedAt])
+  @@index([status])
+  @@index([cycleId])
+  @@index([sector, role])
+}
+
+// Append-only. Funil de atribuicao + idempotencia de webhook.
+model Event {
+  id           String    @id @default(cuid())
+  type         EventType
+  occurredAt   DateTime  @default(now())
+
+  visitorId    String?
+  customerId   String?
+  productId    String?
+  orderId      String?
+  adCampaignId String?
+  paymentId    String?
+
+  // atribuicao
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+
+  // idempotencia de webhook (ambos nullable; eventos de funil internos nao preenchem)
+  provider        String?
+  externalEventId String?
+
+  costCents    Int?
+  revenueCents Int?
+  payload      Json?
+  metadata     Json?
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  customer   Customer?   @relation(fields: [customerId], references: [id])
+  product    Product?    @relation(fields: [productId], references: [id])
+  order      Order?      @relation(fields: [orderId], references: [id])
+  adCampaign AdCampaign? @relation(fields: [adCampaignId], references: [id])
+
+  @@unique([provider, externalEventId])
+  @@index([occurredAt, type])
+  @@index([adCampaignId])
+  @@index([visitorId])
+  @@index([utmCampaign])
+}
+
+// ============================================================
+// CRM / Command Center — modelos (aditivos, nao quebram os existentes).
+// ============================================================
+
+// Snapshot periodico de saude de um setor (time-series, append-only).
+// O status (HEALTHY/WARNING/CRITICAL) NAO e persistido — derivado de score on-read.
+model SectorHealthSnapshot {
+  id         String            @id @default(cuid())
+  sector     OperationalSector
+  score      Int // 0-100; status derivado on-read (statusFromScore)
+  kpis       Json // KPIs + subscores + hasSignal + gatilhos disparados
+  capturedAt DateTime          @default(now())
+  cycleId    String? // tick FAST que o gerou
+  createdAt  DateTime          @default(now())
+
+  problems Problem[] @relation("ProblemSnapshot")
+
+  // DECISAO: sem @@unique([sector, capturedAt]) — capturedAt + cycleId ja evitam
+  // duplicata; unique colidiria com /crm/scan manual no mesmo segundo do tick.
+  @@index([sector, capturedAt]) // tendencia / snapshot-diff
+  @@index([cycleId])
+}
+
+// Problema detectado num setor. Maximo 1 ativo (OPEN/DIAGNOSING/REMEDIATING)
+// por (sector, type) — garantido por guard transacional no COO (sem unique parcial).
+model Problem {
+  id         String        @id @default(cuid())
+  sector     OperationalSector
+  type       String // codigo da regra (ProblemType — z.enum em core/crm.ts)
+  severity   Int // 0-100 (= 100 - score na deteccao)
+  status     ProblemStatus @default(OPEN)
+  rootCause  String?       @db.Text // DiagnosisEngine (regras/LLM)
+  snapshotId String? // snapshot que disparou
+  detectedAt DateTime      @default(now())
+  resolvedAt DateTime?
+  metadata   Json? // score/status de deteccao p/ snapshot-diff
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  healthSnapshot SectorHealthSnapshot? @relation("ProblemSnapshot", fields: [snapshotId], references: [id])
+  actions        RemediationAction[]
+
+  @@index([sector, status]) // guard transacional (1 ativo por sector,type)
+  @@index([status, detectedAt])
+}
+
+// Acao tipada de remediacao proposta para um Problem.
+// riskTier e propriedade ESTATICA do kind (ACTION_SPECS) — gravado para override futuro.
+model RemediationAction {
+  id             String       @id @default(cuid())
+  problemId      String
+  kind           ActionKind
+  riskTier       RiskTier
+  params         Json
+  expectedEffect String       @db.Text
+  status         ActionStatus @default(PROPOSED)
+  reversible     Boolean      @default(false)
+  dedupeKey      String       @unique // hash(problemId + kind + paramsCanonicos)
+  appliedAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  problem    Problem           @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  executions ActionExecution[]
+
+  @@index([status, riskTier])
+  @@index([problemId])
+}
+
+// Auditoria de cada apply()/rollback() do executor (sempre 1 linha, ate em falha/bloqueio).
+model ActionExecution {
+  id          String           @id @default(cuid())
+  actionId    String
+  success     Boolean
+  beforeState Json? // capturado ANTES de qualquer mutacao
+  afterState  Json? // capturado DEPOIS (ou = beforeState em falha)
+  error       String?          @db.Text
+  triggeredBy ExecutionTrigger // AUTO (tick) ou HUMAN (rota)
+  isRollback  Boolean          @default(false)
+  startedAt   DateTime         @default(now())
+  finishedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  action RemediationAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId, startedAt])
+  @@index([triggeredBy])
+}
+
+// Configuracao de guardrails (singleton id='singleton'). Fail-closed: ausente ⇒ killSwitch=true.
+model GuardrailConfig {
+  id                     String   @id @default("singleton")
+  killSwitch             Boolean  @default(false)
+  maxAutoActionsPerCycle Int      @default(5)
+  cooldownMinutes        Int      @default(30)
+  maxAdBudgetCents       Int? // override opcional de MAX_AD_BUDGET_BRL*100
+  updatedAt              DateTime @updatedAt
+}
+
+// ============================================================
+// ALERTAS EXTERNOS — modelos (aditivos, nao quebram os existentes).
+// ============================================================
+
+/// Append-only. 1 linha por (alerta, canal); SUPPRESSED gera 1 linha (canal sentinela).
+model AlertLog {
+  id         String             @id @default(cuid())
+  event      AlertEvent
+  severity   AlertSeverity
+  channel    AlertChannel
+  sector     OperationalSector?
+  title      String
+  body       String             @db.Text
+  status     AlertStatus
+  dedupeKey  String
+  providerId String?
+  error      String?
+  sentAt     DateTime?
+  createdAt  DateTime           @default(now())
+
+  @@index([dedupeKey, createdAt]) // dedupe/throttle
+  @@index([event, createdAt])
+  @@index([status])
+}
+
+/// Singleton id='singleton'. Fail-OPEN (ausente => alertas ligados por default).
+model AlertSettings {
+  id                 String         @id @default("singleton")
+  alertsEnabled      Boolean        @default(true)
+  channels           AlertChannel[] @default([EMAIL])
+  emailRecipients    String[]       @default([])
+  whatsappRecipients String[]       @default([])
+  enabledEvents      AlertEvent[]   @default([]) // vazio = todos
+  throttleMinutes    Int            @default(60)
+  updatedAt          DateTime       @updatedAt
+}
+
+// ============================================================
+// FINANCEIRO CONSOLIDADO — snapshot diario (Feature 2).
+// marginPct e Float? (razao/percentual, nao dinheiro) — consistente com roas/roi.
+// Upsert idempotente por @@unique([date]).
+// ============================================================
+model FinanceSnapshot {
+  id                String   @id @default(cuid())
+  date              DateTime @db.Date // dia local SP, mesma convencao de AdInsight.date
+  grossRevenueCents Int      @default(0)
+  paymentFeesCents  Int      @default(0)
+  adSpendCents      Int      @default(0)
+  llmCostCents      Int      @default(0)
+  netProfitCents    Int      @default(0)
+  marginPct         Float? // null se receita 0
+  paidOrders        Int      @default(0)
+  computedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([date]) // 1 consolidado por dia; upsert idempotente
+  @@index([date])
+}
+
+// ============================================================
+// MERCADO + QA — modelos (aditivos, nao quebram os existentes).
+// ============================================================
+
+// Oportunidade de mercado descoberta e rankeada pelo time MARKET_RESEARCH.
+// scores 0..100 (NAO sao centavos). Lote persistido ordenado por potentialScore;
+// rankAndPick marca a #1 como SELECTED. GATE 1: ebook so nasce de uma SELECTED.
+model MarketOpportunity {
+  id               String                  @id @default(cuid())
+  segment          String // macro (ex. "Financas Pessoais")
+  niche            String // especifico (ex. "Investir do zero")
+  demandScore      Int // 0..100
+  competitionScore Int // 0..100 (MAIOR = pior)
+  potentialScore   Int // 0..100 (chave de ordenacao)
+  rationale        String                  @db.Text
+  titleIdeas       Json // string[]
+  angles           Json // string[]
+  evidence         Json // string[] (PAA/related/sinais internos usados)
+  status           MarketOpportunityStatus @default(PENDING)
+  generatedByRunId String?
+  selectedAt       DateTime?
+  usedByEbookId    String? // ebook que consumiu a oportunidade (back-rel via Ebook.marketOpportunityId)
+  createdAt        DateTime                @default(now())
+  rankedAt         DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  generatedByRun AgentRun? @relation("OpportunityGeneratedBy", fields: [generatedByRunId], references: [id])
+  ebooks         Ebook[]   @relation("EbookOpportunity")
+
+  @@index([status])
+  @@index([potentialScore])
+  @@index([niche])
+}
+
+// Auditoria de um ebook (append-only, estilo SectorHealthSnapshot). score/verdict
+// sao DETERMINISTICOS (recalculados no auditor; nao confiamos no veredito do LLM).
+// GATE 2: ebook so e LANCADO apos o ultimo EbookAudit ter verdict PASS.
+model EbookAudit {
+  id                  String            @id @default(cuid())
+  ebookId             String
+  score               Int // 0..100 (final, deterministico)
+  verdict             EbookAuditVerdict
+  issues              Json // EbookIssue[]
+  recommendations     Json // string[]
+  dimensionScores     Json // { structure, contentQuality, marketFit, compliance }
+  marketOpportunityId String? // oportunidade-alvo (eixo MARKET_FIT)
+  iteration           Int               @default(0) // 0 na 1a auditoria; cresce no loop
+  agentRunId          String?
+  model               String?
+  auditedAt           DateTime          @default(now())
+  createdAt           DateTime          @default(now())
+
+  ebook    Ebook     @relation(fields: [ebookId], references: [id])
+  agentRun AgentRun? @relation("EbookAuditByRun", fields: [agentRunId], references: [id])
+
+  @@index([ebookId, createdAt])
+  @@index([verdict])
+}
+
+// ============================================================
+// PRODUCAO AUTONOMA — marketplace / afiliados (aditivos, nao quebram nada).
+// ============================================================
+
+// Espelho local de um listing de um Product num marketplace externo.
+// 1 listing por (productId, provider). syncedAt = ultima sincronizacao.
+model MarketplaceListing {
+  id                     String   @id @default(cuid())
+  productId              String
+  provider               String // provider externo (ex. "HOTMART", "KIWIFY")
+  externalProductId      String
+  marketplaceUrl         String
+  affiliateCommissionPct Int
+  syncedAt               DateTime
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, provider])
+  @@index([provider])
+}
+
+// Afiliado prospectado/ativo. totalSalesCents em centavos BRL.
+model Affiliate {
+  id                String          @id @default(cuid())
+  name              String
+  email             String          @unique
+  whatsappNumber    String?
+  hotmartAffiliateId String?
+  status            AffiliateStatus @default(PROSPECT)
+  ebookId           String?
+  commissionPct     Int             @default(30)
+  totalSalesCents   Int             @default(0)
+  lastContactedAt   DateTime?
+  tags              String[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  outreaches AffiliateOutreach[]
+
+  @@index([status])
+  @@index([ebookId])
+}
+
+// Append-only: 1 linha por contato de prospeccao a um afiliado.
+model AffiliateOutreach {
+  id          String         @id @default(cuid())
+  affiliateId String
+  channel     OutreachChannel
+  templateKey String
+  status      OutreachStatus @default(SENT)
+  sentAt      DateTime       @default(now())
+  agentRunId  String?
+  payload     Json?
+  createdAt   DateTime       @default(now())
+
+  affiliate Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([affiliateId, sentAt])
+  @@index([status])
+}

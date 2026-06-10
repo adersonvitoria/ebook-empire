@@ -1,0 +1,28 @@
+{
+  "name": "ebook-empire",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Empresa autonoma multi-agente que gera, vende e entrega ebooks online.",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @ebook-empire/api dev",
+    "dev:web": "pnpm --filter @ebook-empire/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "devDependencies": {
+    "@prisma/client": "^6.2.0",
+    "@types/node": "^20.14.0",
+    "prisma": "^6.2.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

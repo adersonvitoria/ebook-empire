@@ -1,0 +1,41 @@
+{
+  "name": "@ebook-empire/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "node --watch --import tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "e2e": "tsx scripts/e2e.ts",
+    "e2e:crm": "tsx scripts/e2e-crm.ts",
+    "e2e:ops": "tsx scripts/e2e-finance-alerts.ts",
+    "e2e:launch": "tsx scripts/e2e-launch.ts",
+    "e2e:coo-sectors": "tsx scripts/e2e-coo-sectors.ts",
+    "prisma:generate": "prisma generate --schema ../../prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema ../../prisma/schema.prisma",
+    "prisma:studio": "prisma studio --schema ../../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@ebook-empire/adapters": "workspace:*",
+    "@ebook-empire/agents": "workspace:*",
+    "@ebook-empire/core": "workspace:*",
+    "@fastify/cors": "^8.5.0",
+    "@fastify/jwt": "^8.0.1",
+    "@prisma/client": "^6.2.0",
+    "fastify": "^4.28.1",
+    "pdfkit": "^0.15.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pdfkit": "^0.13.5",
+    "prisma": "^6.2.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

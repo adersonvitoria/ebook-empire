@@ -1,0 +1,40 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Build / saidas
+dist/
+build/
+*.tsbuildinfo
+
+# Next.js
+.next/
+out/
+
+# Prisma
+prisma/migrations/dev.db*
+
+# Ambiente
+.env
+.env.local
+.env.*.local
+
+# Storage local de entrega (stub)
+storage/
+.storage/
+
+# Cluster Postgres local dedicado (NUNCA commitar — dados do banco, 68MB+)
+.pgdata/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / SO
+.DS_Store
+.vscode/
+.idea/
+
+# Testes
+coverage/
