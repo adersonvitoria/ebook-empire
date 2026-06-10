@@ -18,6 +18,7 @@ import {
   type AlertSettings,
   type AlertStatus,
 } from '@/lib/api';
+import { useAuth, isUnauthorized } from '@/lib/auth';
 
 const ALL_CHANNELS: AlertChannel[] = ['EMAIL', 'WHATSAPP'];
 
@@ -72,6 +73,7 @@ function Field({
 
 export default function CrmAlertsPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const settingsQuery = useQuery({
     queryKey: ['alerts', 'settings'],
@@ -271,16 +273,25 @@ export default function CrmAlertsPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => saveMutation.mutate()}
-                  disabled={saveMutation.isPending || !s}
+                  disabled={saveMutation.isPending || !s || !isAuthenticated}
+                  title={!isAuthenticated ? 'Faca login para agir' : undefined}
                   className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand/80 disabled:opacity-50"
                 >
-                  {saveMutation.isPending ? 'Salvando…' : 'Salvar configuracao'}
+                  {saveMutation.isPending
+                    ? 'Salvando…'
+                    : !isAuthenticated
+                      ? 'Faca login para salvar'
+                      : 'Salvar configuracao'}
                 </button>
                 {saveMutation.isSuccess ? (
                   <span className="text-xs text-emerald-400">Configuracao salva.</span>
                 ) : null}
                 {saveMutation.isError ? (
-                  <span className="text-xs text-red-400">Falha ao salvar.</span>
+                  <span className="text-xs text-red-400">
+                    {isUnauthorized(saveMutation.error)
+                      ? 'Faca login para salvar.'
+                      : 'Falha ao salvar.'}
+                  </span>
                 ) : null}
               </div>
               {s?.updatedAt ? (
@@ -301,10 +312,15 @@ export default function CrmAlertsPage() {
               </div>
               <button
                 onClick={() => testMutation.mutate()}
-                disabled={testMutation.isPending}
+                disabled={testMutation.isPending || !isAuthenticated}
+                title={!isAuthenticated ? 'Faca login para agir' : undefined}
                 className="shrink-0 rounded-md border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 disabled:opacity-50"
               >
-                {testMutation.isPending ? 'Enviando…' : 'Enviar teste'}
+                {testMutation.isPending
+                  ? 'Enviando…'
+                  : !isAuthenticated
+                    ? 'Faca login'
+                    : 'Enviar teste'}
               </button>
             </div>
             {testMutation.isSuccess ? (
@@ -318,11 +334,13 @@ export default function CrmAlertsPage() {
             ) : null}
             {testMutation.isError ? (
               <p className="mt-3 text-xs text-red-400">
-                {testMutation.error instanceof ApiError && testMutation.error.status === 503
-                  ? 'Canais de notificacao ainda indisponiveis.'
-                  : testMutation.error instanceof ApiError && testMutation.error.status === 404
-                    ? 'Rota /alerts/test ainda nao implementada.'
-                    : 'Falha ao enviar o alerta de teste.'}
+                {isUnauthorized(testMutation.error)
+                  ? 'Faca login para enviar o alerta de teste.'
+                  : testMutation.error instanceof ApiError && testMutation.error.status === 503
+                    ? 'Canais de notificacao ainda indisponiveis.'
+                    : testMutation.error instanceof ApiError && testMutation.error.status === 404
+                      ? 'Rota /alerts/test ainda nao implementada.'
+                      : 'Falha ao enviar o alerta de teste.'}
               </p>
             ) : null}
           </div>

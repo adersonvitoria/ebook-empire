@@ -6,6 +6,65 @@ Pre-requisitos: **Node 20+**, **pnpm 9.15+**, **PostgreSQL**.
 
 ---
 
+## 0. Login do dashboard (agir pela tela)
+
+> O dashboard (`apps/web`) e VISIVEL sem login — todos os `GET` de leitura sao publicos. **Para AGIR** (botoes administrativos: kill switch, aprovar/rejeitar acao HIGH, rollback, scan, gerar ebook, salvar guardrails/alertas, etc.) e preciso fazer login, porque essas rotas sao protegidas por JWT (`fastify.authenticate`). O login e single-admin (apenas o dono).
+
+### 0.1 Habilitar o login — setar `ADMIN_PASSWORD`
+
+A rota `POST /auth/login` so funciona se a env **`ADMIN_PASSWORD`** estiver configurada na API.
+
+- **Em producao (Railway):** Settings → **Variables** → adicione `ADMIN_PASSWORD=<senha-forte>` e faca **redeploy** (a env e lida no boot).
+- **Local:** adicione `ADMIN_PASSWORD=<senha>` ao `.env` da raiz e reinicie a API.
+
+Comportamento da rota (`apps/api/src/routes/auth.ts`):
+
+| Situacao | Resposta |
+|---|---|
+| `ADMIN_PASSWORD` **vazia/ausente** | `503 { error: 'login_disabled' }` — login desabilitado, botoes ficam inertes |
+| senha **errada** | `401 { error: 'invalid_credentials' }` |
+| senha **correta** | `200 { token, expiresInSec }` (JWT `{ role:'admin', sub:'admin' }`) |
+
+A comparacao de senha e em **tempo constante** (`timingSafeEqual`); a senha nunca e logada. `GET /auth/me` (protegida) valida o Bearer e devolve `{ role, sub }`.
+
+### 0.2 Logar na UI
+
+1. Abra o dashboard (ex. `http://localhost:3000` em dev, ou a URL da Vercel em producao).
+2. No topo ha a **barra de autenticacao** (`components/auth-bar.tsx`): em "Modo leitura — faca login para agir", digite a senha em **"Senha do painel"** e clique **Entrar**.
+3. Ao autenticar, o indicador vira verde **"Autenticado — acoes habilitadas"** e os botoes de acao passam a funcionar. O token e guardado em `localStorage` (chave `ee_token`) e anexado como `Authorization: Bearer <token>` em todas as requisicoes.
+4. **Sair:** clique **Sair** (limpa o token da memoria e do storage).
+
+Mensagens de erro na barra: senha incorreta (401), "Login desabilitado no servidor (ADMIN_PASSWORD nao configurado)" (503), ou "API fora do ar" (sem rede).
+
+### 0.3 O que cada botao de acao faz (todos exigem login)
+
+| Pagina (web) | Botao | Rota chamada |
+|---|---|---|
+| `/crm/settings` | Ligar/Desligar kill switch | `POST /crm/killswitch` |
+| `/crm/settings` | Salvar limites / guardrails | `POST /crm/guardrails` |
+| `/crm/settings` | Rodar scan | `POST /crm/scan` |
+| `/crm/approvals` | Aprovar acao HIGH | `POST /crm/actions/:id/approve` |
+| `/crm/approvals` | Rejeitar acao HIGH | `POST /crm/actions/:id/reject` |
+| `/crm/actions` | Reverter / rollback | `POST /crm/actions/:id/rollback` |
+| `/crm/alerts` | Salvar configuracao de alertas | `PUT /alerts/settings` |
+| `/crm/alerts` | Enviar alerta de teste | `POST /alerts/test` |
+| `/crm/market` | Rodar analise / market scan | `POST /market/scan` |
+| `/crm/quality` | Auditar ebook | `POST /quality/audit/:id` |
+| `/crm/quality` | Corrigir ebook | `POST /quality/fix/:id` |
+| `ebooks` | Gerar ebook | `POST /ebooks/generate` |
+| `agents` | Rodar ciclo / run-cycle | `POST /agents/cycle` |
+| `crm/finance` | Persistir snapshot do dia | `POST /finance/snapshot` |
+
+Se uma acao retornar **401** (token expirou ou ausente), a UI sinaliza que e preciso logar de novo.
+
+### 0.4 Expiracao do token
+
+O token expira em **`AUTH_TOKEN_TTL_SEC`** segundos (default **43200 = 12 horas**; configuravel por env). Depois disso as acoes voltam a dar 401 — basta logar novamente pela barra. O JWT e assinado com o **`JWT_SECRET`** (o mesmo das demais rotas admin).
+
+> **CORS:** para o navegador permitir as chamadas autenticadas, o `@fastify/cors` ja inclui `Authorization` em `allowedHeaders` (`['Content-Type','Authorization']`) alem da origem `CORS_ORIGIN`. Sem isso o browser bloquearia o header `Authorization` — ver `DEPLOY.md` §5.
+
+---
+
 ## 1. Subir o banco
 
 > **Setup local ja validado (2026-06-10):** o ambiente foi configurado e exercitado ponta a ponta nesta maquina. O `.env` ja aponta para um Postgres em `localhost:5433` (porta 5433 para nao conflitar com o PostgreSQL nativo do Windows em 5432). As migrations ja foram aplicadas. Para reproduzir do zero, use uma das opcoes abaixo.

@@ -14,6 +14,7 @@ import {
   formatDateTime,
   type CrmAction,
 } from '@/lib/api';
+import { useAuth, isUnauthorized } from '@/lib/auth';
 
 // Renderiza os params de forma legivel (centavos -> BRL onde aplicavel).
 function ParamsSummary({ params }: { params: Record<string, unknown> }) {
@@ -38,6 +39,7 @@ function ParamsSummary({ params }: { params: Record<string, unknown> }) {
 
 export default function CrmApprovalsPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
 
   const query = useQuery({
@@ -125,7 +127,8 @@ export default function CrmApprovalsPage() {
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => approveMutation.mutate(a.id)}
-                  disabled={pending}
+                  disabled={pending || !isAuthenticated}
+                  title={!isAuthenticated ? 'Faca login para agir' : undefined}
                   className="rounded-md bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
                 >
                   Aprovar
@@ -143,7 +146,8 @@ export default function CrmApprovalsPage() {
                   onClick={() =>
                     rejectMutation.mutate({ id: a.id, reason: rejectReason[a.id] })
                   }
-                  disabled={pending}
+                  disabled={pending || !isAuthenticated}
+                  title={!isAuthenticated ? 'Faca login para agir' : undefined}
                   className="rounded-md border border-red-500/40 px-4 py-1.5 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/10 disabled:opacity-50"
                 >
                   Rejeitar
@@ -154,9 +158,17 @@ export default function CrmApprovalsPage() {
         </ul>
       )}
 
+      {!isAuthenticated && actions.length > 0 ? (
+        <p className="mt-4 text-xs text-amber-400">
+          Faca login (barra do topo) para aprovar ou rejeitar acoes.
+        </p>
+      ) : null}
+
       {approveMutation.isError || rejectMutation.isError ? (
         <p className="mt-4 text-xs text-red-400">
-          Falha ao processar a decisao. Tente novamente.
+          {isUnauthorized(approveMutation.error) || isUnauthorized(rejectMutation.error)
+            ? 'Sessao invalida ou expirada — faca login novamente.'
+            : 'Falha ao processar a decisao. Tente novamente.'}
         </p>
       ) : null}
     </div>

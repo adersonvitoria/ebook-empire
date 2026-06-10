@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import './globals.css';
 import { Providers } from './providers';
+import { AuthBar } from '@/components/auth-bar';
 
 export const metadata: Metadata = {
   title: 'Ebook Empire — Painel',
@@ -55,7 +56,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               </nav>
             </aside>
 
-            <main className="flex-1 p-8">{children}</main>
+            <div className="flex flex-1 flex-col">
+              <AuthBar />
+              <main className="flex-1 p-8">{children}</main>
+            </div>
           </div>
         </Providers>
       </body>

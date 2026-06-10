@@ -119,6 +119,14 @@ export type UtmParamsInput = z.infer<typeof utmParamsSchema>;
 // ROTAS — inputs/outputs
 // ============================================================
 
+// --- /auth ---
+// Login do painel interno (single-admin). So o password; o backend compara
+// com env.ADMIN_PASSWORD em tempo constante e emite um JWT via fastify.jwt.sign.
+export const loginBodySchema = z.object({
+  password: z.string().min(1),
+});
+export type LoginBody = z.infer<typeof loginBodySchema>;
+
 // --- /ebooks ---
 export const listEbooksQuerySchema = z.object({
   status: ebookStatusSchema.optional(),

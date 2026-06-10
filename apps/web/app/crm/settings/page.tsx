@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CrmTabs } from '../crm-tabs';
 import { api, ApiError, formatDateTime, type GuardrailConfig } from '@/lib/api';
+import { useAuth, isUnauthorized } from '@/lib/auth';
 
 function Field({
   label,
@@ -33,6 +34,7 @@ const inputClass =
 
 export default function CrmSettingsPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const query = useQuery({
     queryKey: ['crm', 'guardrails'],
@@ -131,7 +133,8 @@ export default function CrmSettingsPage() {
               </div>
               <button
                 onClick={() => killSwitchMutation.mutate(!(g?.killSwitch ?? false))}
-                disabled={killSwitchMutation.isPending || !g}
+                disabled={killSwitchMutation.isPending || !g || !isAuthenticated}
+                title={!isAuthenticated ? 'Faca login para agir' : undefined}
                 className={`shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                   g?.killSwitch
                     ? 'bg-emerald-600 text-white hover:bg-emerald-500'
@@ -140,9 +143,11 @@ export default function CrmSettingsPage() {
               >
                 {killSwitchMutation.isPending
                   ? 'Aplicando…'
-                  : g?.killSwitch
-                    ? 'Desligar kill switch'
-                    : 'Ligar kill switch'}
+                  : !isAuthenticated
+                    ? 'Faca login para agir'
+                    : g?.killSwitch
+                      ? 'Desligar kill switch'
+                      : 'Ligar kill switch'}
               </button>
             </div>
             {g ? (
@@ -151,6 +156,13 @@ export default function CrmSettingsPage() {
                 <span className={g.killSwitch ? 'text-red-400' : 'text-emerald-400'}>
                   {g.killSwitch ? 'LIGADO (operacao pausada)' : 'desligado (operando)'}
                 </span>
+              </p>
+            ) : null}
+            {killSwitchMutation.isError ? (
+              <p className="mt-2 text-xs text-red-400">
+                {isUnauthorized(killSwitchMutation.error)
+                  ? 'Sessao invalida ou expirada — faca login novamente.'
+                  : 'Falha ao alterar o kill switch.'}
               </p>
             ) : null}
           </div>
@@ -200,16 +212,25 @@ export default function CrmSettingsPage() {
             <div className="mt-5 flex items-center gap-3">
               <button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !g}
+                disabled={saveMutation.isPending || !g || !isAuthenticated}
+                title={!isAuthenticated ? 'Faca login para agir' : undefined}
                 className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand/80 disabled:opacity-50"
               >
-                {saveMutation.isPending ? 'Salvando…' : 'Salvar limites'}
+                {saveMutation.isPending
+                  ? 'Salvando…'
+                  : !isAuthenticated
+                    ? 'Faca login para salvar'
+                    : 'Salvar limites'}
               </button>
               {saveMutation.isSuccess ? (
                 <span className="text-xs text-emerald-400">Limites atualizados.</span>
               ) : null}
               {saveMutation.isError ? (
-                <span className="text-xs text-red-400">Falha ao salvar.</span>
+                <span className="text-xs text-red-400">
+                  {isUnauthorized(saveMutation.error)
+                    ? 'Faca login para salvar.'
+                    : 'Falha ao salvar.'}
+                </span>
               ) : null}
             </div>
             {g?.updatedAt ? (
@@ -231,10 +252,15 @@ export default function CrmSettingsPage() {
               </div>
               <button
                 onClick={() => scanMutation.mutate()}
-                disabled={scanMutation.isPending}
+                disabled={scanMutation.isPending || !isAuthenticated}
+                title={!isAuthenticated ? 'Faca login para agir' : undefined}
                 className="shrink-0 rounded-md border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 disabled:opacity-50"
               >
-                {scanMutation.isPending ? 'Rodando scan…' : 'Rodar scan'}
+                {scanMutation.isPending
+                  ? 'Rodando scan…'
+                  : !isAuthenticated
+                    ? 'Faca login'
+                    : 'Rodar scan'}
               </button>
             </div>
             {scanMutation.isSuccess ? (
@@ -247,10 +273,12 @@ export default function CrmSettingsPage() {
             ) : null}
             {scanMutation.isError ? (
               <p className="mt-3 text-xs text-red-400">
-                {scanMutation.error instanceof ApiError &&
-                scanMutation.error.status === 404
-                  ? 'Rota /crm/scan ainda nao implementada.'
-                  : 'Falha ao disparar o scan.'}
+                {isUnauthorized(scanMutation.error)
+                  ? 'Faca login para disparar o scan.'
+                  : scanMutation.error instanceof ApiError &&
+                      scanMutation.error.status === 404
+                    ? 'Rota /crm/scan ainda nao implementada.'
+                    : 'Falha ao disparar o scan.'}
               </p>
             ) : null}
           </div>

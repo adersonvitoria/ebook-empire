@@ -8,7 +8,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CrmTabs } from '../crm-tabs';
-import { API_BASE, ApiError, formatDateTime } from '@/lib/api';
+import { API_BASE, ApiError, authHeaders, formatDateTime } from '@/lib/api';
+import { useAuth, isUnauthorized } from '@/lib/auth';
 
 // ------------------------------------------------------------
 // Tipos espelhados (o browser nao importa @ebook-empire/core).
@@ -84,7 +85,7 @@ async function postQa(path: string): Promise<unknown> {
   const url = new URL(path, `${API_BASE.replace(/\/$/, '')}/`).toString();
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: authHeaders(true),
     body: '{}',
     cache: 'no-store',
   });
@@ -103,6 +104,7 @@ async function postQa(path: string): Promise<unknown> {
 
 export default function CrmQualityPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [verdict, setVerdict] = useState<Verdict | ''>('');
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -232,7 +234,8 @@ export default function CrmQualityPage() {
                       <button
                         type="button"
                         className={btnClass}
-                        disabled={busy}
+                        disabled={busy || !isAuthenticated}
+                        title={!isAuthenticated ? 'Faca login para agir' : undefined}
                         onClick={() => auditMutation.mutate(a.ebookId)}
                       >
                         {busy && auditMutation.isPending ? '…' : 'Auditar'}
@@ -240,7 +243,8 @@ export default function CrmQualityPage() {
                       <button
                         type="button"
                         className={btnClass}
-                        disabled={busy || a.verdict === 'PASS'}
+                        disabled={busy || a.verdict === 'PASS' || !isAuthenticated}
+                        title={!isAuthenticated ? 'Faca login para agir' : undefined}
                         onClick={() => fixMutation.mutate(a.ebookId)}
                       >
                         {busy && fixMutation.isPending ? '…' : 'Corrigir'}
@@ -303,10 +307,13 @@ export default function CrmQualityPage() {
 
       {(auditMutation.isError || fixMutation.isError) && (
         <p className="mt-4 text-sm text-red-400">
-          Falha na operacao:{' '}
-          {(auditMutation.error ?? fixMutation.error) instanceof Error
-            ? (auditMutation.error ?? (fixMutation.error as Error)).message
-            : 'erro desconhecido'}
+          {isUnauthorized(auditMutation.error) || isUnauthorized(fixMutation.error)
+            ? 'Faca login para auditar ou corrigir ebooks.'
+            : `Falha na operacao: ${
+                (auditMutation.error ?? fixMutation.error) instanceof Error
+                  ? (auditMutation.error ?? (fixMutation.error as Error)).message
+                  : 'erro desconhecido'
+              }`}
         </p>
       )}
     </div>

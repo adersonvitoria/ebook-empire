@@ -12,7 +12,8 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { API_BASE, ApiError, formatDateTime } from '@/lib/api';
+import { API_BASE, ApiError, authHeaders, formatDateTime } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 // ------------------------------------------------------------
 // Tipos espelhados de @ebook-empire/core (market.ts). O browser nao importa core.
@@ -63,7 +64,7 @@ async function postScan(): Promise<{ count: number }> {
   try {
     res = await fetch(buildUrl('/market/scan'), {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: authHeaders(true),
       body: '{}',
       cache: 'no-store',
     });
@@ -208,6 +209,7 @@ function OpportunityCard({ opp, rank }: { opp: MarketOpportunity; rank: number }
 
 export default function MarketPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [scanMsg, setScanMsg] = useState<string | null>(null);
 
   const list = useQuery({
@@ -255,10 +257,15 @@ export default function MarketPage() {
             setScanMsg(null);
             scan.mutate();
           }}
-          disabled={scan.isPending}
+          disabled={scan.isPending || !isAuthenticated}
+          title={!isAuthenticated ? 'Faca login para agir' : undefined}
           className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {scan.isPending ? 'Rodando analise…' : 'Rodar analise'}
+          {scan.isPending
+            ? 'Rodando analise…'
+            : !isAuthenticated
+              ? 'Faca login para rodar'
+              : 'Rodar analise'}
         </button>
       </header>
 

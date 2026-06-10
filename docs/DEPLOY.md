@@ -112,6 +112,15 @@ Railway → seu servico → **Variables**. Copie os **nomes** de `.env.productio
 
 > **PORT**: o Railway injeta `PORT` automaticamente; a API ja escuta nele (default 3001 em dev). Nao e preciso setar manualmente.
 
+**Para AGIR pela tela do dashboard (login admin):**
+
+| Variavel | Valor |
+|---|---|
+| `ADMIN_PASSWORD` | senha do dono do painel (single-admin). **Vazia/ausente = `POST /auth/login` responde 503 e os botoes de acao do dashboard ficam desabilitados** (o dashboard continua VISIVEL em modo leitura). Preencha com uma senha forte para destravar kill switch / aprovar-rejeitar / rollback / scan / gerar ebook / salvar guardrails e alertas. Apos setar, faca **redeploy** (lida no boot). Comparada em tempo constante; nunca logada. |
+| `AUTH_TOKEN_TTL_SEC` | (opcional) validade do token de login em segundos. Default `43200` (12h). |
+
+> **CORS + `Authorization`:** o login envia o JWT no header `Authorization: Bearer`. O `@fastify/cors` ja inclui esse header em `allowedHeaders` (`['Content-Type','Authorization']`) alem da origem `CORS_ORIGIN` — sem isso o navegador **bloquearia** as chamadas autenticadas do dashboard. Garanta que `CORS_ORIGIN` aponta para a origem real do frontend (Vercel). Detalhe operacional do login em `RUNBOOK.md` §0.
+
 **Chaves de integracao (vazias = aquele canal fica em stub / desligado):**
 
 `ANTHROPIC_API_KEY`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `RESEND_API_KEY`,
@@ -196,6 +205,7 @@ O wiring de ports no scheduler (`apps/api/src/scheduler.ts`, `resolvePorts`) ja 
 - [ ] Release Command = `npx prisma migrate deploy --schema prisma/schema.prisma`.
 - [ ] Volume `/data` anexado + `STORAGE_DIR=/data/storage`.
 - [ ] Envs obrigatorias preenchidas (`DATABASE_URL`, `JWT_SECRET`, `NODE_ENV=production`, `USE_STUBS=false`, `PUBLIC_BASE_URL`, `CORS_ORIGIN`).
+- [ ] `ADMIN_PASSWORD` setada (para agir pela tela; vazia = botoes do dashboard desabilitados) + `CORS_ORIGIN` apontando para a origem real do frontend.
 - [ ] Deploy inicial OK + `/health` => `db: ok`.
 - [ ] Canais reais ligados um a um, com webhooks apontados para `PUBLIC_BASE_URL/webhooks/{asaas,hotmart,kiwify}`.
 - [ ] Hotmart/Kiwify revalidados em homologacao antes de confiar na publicacao de listings.

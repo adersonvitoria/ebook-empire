@@ -12,6 +12,7 @@ import {
   type Ebook,
   type EbookStatus,
 } from '@/lib/api';
+import { useAuth, isUnauthorized } from '@/lib/auth';
 
 const STATUS_STYLES: Record<EbookStatus, string> = {
   DRAFT: 'bg-neutral-700/40 text-neutral-300',
@@ -33,6 +34,7 @@ function StatusBadge({ status }: { status: EbookStatus }) {
 
 export default function EbooksPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
   const [niche, setNiche] = useState('');
   const [title, setTitle] = useState('');
 
@@ -97,22 +99,33 @@ export default function EbooksPage() {
           />
           <button
             type="submit"
-            disabled={generateMutation.isPending || niche.trim().length < 2}
+            disabled={
+              generateMutation.isPending ||
+              niche.trim().length < 2 ||
+              !isAuthenticated
+            }
+            title={!isAuthenticated ? 'Faca login para agir' : undefined}
             className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {generateMutation.isPending ? 'Gerando…' : 'Gerar ebook'}
+            {generateMutation.isPending
+              ? 'Gerando…'
+              : !isAuthenticated
+                ? 'Faca login para gerar'
+                : 'Gerar ebook'}
           </button>
         </div>
         {generateMutation.isError ? (
           <p className="mt-3 text-xs text-red-400">
-            {generateMutation.error instanceof ApiError &&
-            generateMutation.error.status === 404
-              ? 'Rota /ebooks/generate ainda nao implementada.'
-              : `Falha ao gerar: ${
-                  generateMutation.error instanceof Error
-                    ? generateMutation.error.message
-                    : 'erro desconhecido'
-                }`}
+            {isUnauthorized(generateMutation.error)
+              ? 'Faca login para gerar ebooks.'
+              : generateMutation.error instanceof ApiError &&
+                  generateMutation.error.status === 404
+                ? 'Rota /ebooks/generate ainda nao implementada.'
+                : `Falha ao gerar: ${
+                    generateMutation.error instanceof Error
+                      ? generateMutation.error.message
+                      : 'erro desconhecido'
+                  }`}
           </p>
         ) : null}
         {generateMutation.isSuccess ? (

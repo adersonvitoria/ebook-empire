@@ -26,6 +26,7 @@ import { prisma } from './db.js';
 
 // Rotas (plugins Fastify; cada arquivo exporta default async (fastify) => {}).
 import healthRoutes from './routes/health.js';
+import authRoutes from './routes/auth.js';
 import ebooksRoutes from './routes/ebooks.js';
 import checkoutRoutes from './routes/checkout.js';
 import deliveryRoutes from './routes/delivery.js';
@@ -51,6 +52,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Registrado ANTES dos plugins de rota para cobrir todas as rotas.
   await app.register(fastifyCors, {
     origin: env.CORS_ORIGIN,
+    methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   // --- Auth (Bearer JWT) ---
@@ -69,6 +72,7 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // --- Registro de TODAS as rotas por caminho fixo ---
   await app.register(healthRoutes);
+  await app.register(authRoutes);
   await app.register(ebooksRoutes);
   await app.register(checkoutRoutes);
   await app.register(deliveryRoutes);

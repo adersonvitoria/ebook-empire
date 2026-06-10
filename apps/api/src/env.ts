@@ -46,6 +46,10 @@ const envSchema = z.object({
 
   // Auth
   JWT_SECRET: z.string().min(8),
+  // Senha do painel interno (single-admin). Vazio => login desabilitado (503).
+  ADMIN_PASSWORD: z.string().optional().default(''),
+  // TTL do token de login (segundos). Default 43200 = 12h.
+  AUTH_TOKEN_TTL_SEC: z.coerce.number().int().positive().default(43_200),
 
   // Agentes / scheduler
   ENABLE_AGENTS: boolish.default('true'),

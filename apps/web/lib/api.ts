@@ -10,6 +10,64 @@ export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 // ------------------------------------------------------------
+// Token de autenticacao (painel single-admin).
+// O AuthProvider (lib/auth.tsx) e a fonte da verdade e mantem este store
+// sincronizado via setAuthToken(); o request() abaixo (e as pages que fazem
+// fetch direto, ex.: market/quality) leem o token via getAuthToken() para
+// anexar o header Authorization: Bearer <token>. Manter o token aqui (modulo)
+// evita que cada chamada precise receber o token por parametro.
+// ------------------------------------------------------------
+const TOKEN_STORAGE_KEY = 'ee_token';
+
+let authToken: string | null = null;
+
+/** Le o token atual (memoria; hidratado do localStorage pelo AuthProvider). */
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
+/**
+ * Define o token usado em todas as requisicoes autenticadas e persiste em
+ * localStorage. Passar null faz logout (limpa memoria + storage).
+ */
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // storage indisponivel (modo privado etc.) — segue so em memoria.
+  }
+}
+
+/** Le o token persistido (chamado pelo AuthProvider na hidratacao). */
+export function readStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Chave usada no localStorage — exportada para o AuthProvider reusar. */
+export const AUTH_TOKEN_STORAGE_KEY = TOKEN_STORAGE_KEY;
+
+/**
+ * Monta os headers de uma requisicao anexando Authorization quando ha token.
+ * Reusado pelo request() interno e exportado para as pages com fetch direto
+ * (market/quality) anexarem o mesmo Bearer.
+ */
+export function authHeaders(hasBody: boolean): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (hasBody) headers['content-type'] = 'application/json';
+  const token = getAuthToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+// ------------------------------------------------------------
 // Tipos espelhados de core (apenas o necessario para o dashboard)
 // ------------------------------------------------------------
 export type EbookStatus = 'DRAFT' | 'GENERATING' | 'READY' | 'PUBLISHED' | 'ARCHIVED';
@@ -538,7 +596,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   try {
     res = await fetch(buildUrl(path, query), {
       method,
-      headers: body ? { 'content-type': 'application/json' } : undefined,
+      headers: authHeaders(body !== undefined),
       body: body ? JSON.stringify(body) : undefined,
       signal,
       cache: 'no-store',
@@ -590,6 +648,23 @@ export const api = {
     return request<{ status: string; db: string; service: string }>('/health', {
       signal,
     });
+  },
+
+  // --- Auth (painel single-admin) ---
+  // POST /auth/login { password } => { token, expiresInSec }.
+  // 401 = senha incorreta; 503 = login desabilitado (ADMIN_PASSWORD ausente).
+  // O AuthProvider chama este metodo e guarda o token via setAuthToken().
+  login(password: string) {
+    return request<{ token: string; expiresInSec: number }>('/auth/login', {
+      method: 'POST',
+      body: { password },
+    });
+  },
+
+  // GET /auth/me — valida o Bearer atual (preHandler fastify.authenticate).
+  // Usado para confirmar que um token hidratado ainda e valido.
+  me(signal?: AbortSignal) {
+    return request<{ role: string; sub: string }>('/auth/me', { signal });
   },
 
   // --- KPIs / Overview ---

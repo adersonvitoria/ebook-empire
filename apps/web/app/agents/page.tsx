@@ -14,6 +14,7 @@ import {
   type AgentRun,
   type AgentRunStatus,
 } from '@/lib/api';
+import { useAuth, isUnauthorized } from '@/lib/auth';
 
 const STATUS_STYLES: Record<AgentRunStatus, string> = {
   RUNNING: 'bg-sky-500/20 text-sky-300',
@@ -34,6 +35,7 @@ function StatusBadge({ status }: { status: AgentRunStatus }) {
 
 export default function AgentsPage() {
   const queryClient = useQueryClient();
+  const { isAuthenticated } = useAuth();
 
   const runsQuery = useQuery({
     queryKey: ['agents', 'runs'],
@@ -66,17 +68,24 @@ export default function AgentsPage() {
         <div className="flex flex-col items-end">
           <button
             onClick={() => cycleMutation.mutate()}
-            disabled={cycleMutation.isPending}
+            disabled={cycleMutation.isPending || !isAuthenticated}
+            title={!isAuthenticated ? 'Faca login para agir' : undefined}
             className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-fg transition-colors hover:bg-brand/80 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {cycleMutation.isPending ? 'Rodando ciclo…' : 'Rodar ciclo'}
+            {cycleMutation.isPending
+              ? 'Rodando ciclo…'
+              : !isAuthenticated
+                ? 'Faca login para rodar'
+                : 'Rodar ciclo'}
           </button>
           {cycleMutation.isError ? (
             <p className="mt-2 text-xs text-red-400">
-              {cycleMutation.error instanceof ApiError &&
-              cycleMutation.error.status === 404
-                ? 'Rota /agents/run-cycle ainda nao implementada.'
-                : 'Falha ao disparar ciclo.'}
+              {isUnauthorized(cycleMutation.error)
+                ? 'Faca login para disparar o ciclo.'
+                : cycleMutation.error instanceof ApiError &&
+                    cycleMutation.error.status === 404
+                  ? 'Rota /agents/run-cycle ainda nao implementada.'
+                  : 'Falha ao disparar ciclo.'}
             </p>
           ) : null}
           {cycleMutation.isSuccess ? (

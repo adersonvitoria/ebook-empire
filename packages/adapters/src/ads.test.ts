@@ -119,7 +119,15 @@ describe('createAdsAdapter factory', () => {
     expect(ads).toBeInstanceOf(MetaAdsAdapter);
   });
 
-  it('MetaAdsAdapter lanca sem token', () => {
-    expect(() => createAdsAdapter({ useStubs: false, metaAdAccountId: '123' })).toThrow();
+  it('degrada para StubAdsAdapter quando useStubs=false mas falta o token', () => {
+    // Contrato atual (commit dba0eca): a factory NAO derruba o boot quando o
+    // canal Ads ainda nao tem credencial — degrada para o stub em vez de lancar.
+    const ads = createAdsAdapter({ useStubs: false, metaAdAccountId: '123' });
+    expect(ads).toBeInstanceOf(StubAdsAdapter);
+  });
+
+  it('MetaAdsAdapter (ctor direto) lanca sem token', () => {
+    // O invariante de "token obrigatorio" continua valendo no ctor do adapter real.
+    expect(() => new MetaAdsAdapter('', '123')).toThrow();
   });
 });
