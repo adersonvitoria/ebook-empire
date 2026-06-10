@@ -6,9 +6,11 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
+# corepack (vem com o Node 20) instala o shim do pnpm no bin do Node, que esta
+# no PATH — ao contrario de `npm i -g pnpm`, cujo prefixo global nao fica no PATH
+# do shell de login do proximo RUN (causa de "pnpm: command not found").
 cmds = [
-  "npm i -g pnpm@9.15.0",
-  "pnpm install --frozen-lockfile",
+  "corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --frozen-lockfile",
 ]
 
 [phases.build]
