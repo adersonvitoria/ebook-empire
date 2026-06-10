@@ -289,7 +289,11 @@ export function enumerateDays(since: string, until: string): string[] {
 // Factory — real <-> stub por env.
 // ============================================================
 export function createAdsAdapter(config: AdsAdapterConfig): AdsPort {
-  if (config.useStubs) {
+  // Degrada para stub se USE_STUBS ou se faltarem as credenciais Meta. Assim o
+  // go-live por canal (Ads ainda sem chave, USE_STUBS=false) NAO derruba o boot —
+  // o ctor do MetaAdsAdapter lanca se o token estiver ausente. Mesmo padrao do
+  // createInstagramAdapter/createPaymentAdapter/createMarketDataAdapter.
+  if (config.useStubs || !config.metaGraphToken || !config.metaAdAccountId) {
     return new StubAdsAdapter(config.stubSeed ?? 1);
   }
   return new MetaAdsAdapter(
