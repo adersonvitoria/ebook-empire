@@ -132,6 +132,97 @@ export class AnthropicLLMAdapter implements LLMPort {
 }
 
 // ============================================================
+// Adapter REAL (Google Gemini) — camada gratuita (gemini-2.0-flash)
+// ============================================================
+// REST direto (sem SDK): POST {base}/models/{model}:generateContent?key=KEY.
+// Roles do Gemini: 'user' | 'model' (mapeia 'assistant' -> 'model'). JSON via
+// generationConfig.responseMimeType. O id de modelo vindo dos agentes (claude-*)
+// e IGNORADO — o adapter usa sempre o seu modelo Gemini configurado.
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+
+interface GeminiResponse {
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+}
+
+export class GeminiLLMAdapter implements LLMPort {
+  private readonly apiKey: string;
+  private readonly model: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(apiKey: string, model?: string, fetchImpl?: typeof fetch) {
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY ausente — use o StubLLMAdapter ou configure a chave.');
+    }
+    this.apiKey = apiKey;
+    this.model = model && model.trim() ? model.trim() : DEFAULT_GEMINI_MODEL;
+    this.fetchImpl = fetchImpl ?? fetch;
+  }
+
+  private async call(
+    input: LLMGenerateTextInput,
+    jsonMode: boolean,
+  ): Promise<LLMGenerateTextResult> {
+    const contents = input.messages.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+    const body: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        temperature: input.temperature ?? 0.7,
+        maxOutputTokens: input.maxTokens,
+        ...(jsonMode ? { responseMimeType: 'application/json' } : {}),
+      },
+    };
+    if (input.system) {
+      body.systemInstruction = { parts: [{ text: input.system }] };
+    }
+
+    const url = `${GEMINI_BASE_URL}/models/${this.model}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const res = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 500)}`);
+    }
+    const data = (await res.json()) as GeminiResponse;
+    const text = (data.candidates?.[0]?.content?.parts ?? [])
+      .map((p) => p.text ?? '')
+      .join('');
+
+    const inputTokens = data.usageMetadata?.promptTokenCount ?? 0;
+    const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
+    // Camada gratuita do Gemini => custo 0.
+    const usage: LLMUsage = { inputTokens, outputTokens, costCents: 0 };
+    return { text, usage };
+  }
+
+  async generateText(input: LLMGenerateTextInput): Promise<LLMGenerateTextResult> {
+    return this.call(input, false);
+  }
+
+  async generateJson<T>(
+    input: LLMGenerateJsonInput<T>,
+  ): Promise<LLMGenerateJsonResult<T>> {
+    const system = [
+      input.system,
+      'Responda EXCLUSIVAMENTE com um objeto JSON valido, sem texto extra, sem cercas markdown.',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    const { text, usage } = await this.call({ ...input, system }, true);
+    const raw = extractJson(text);
+    const data = input.parse(raw);
+    return { data, usage };
+  }
+}
+
+// ============================================================
 // Adapter STUB (deterministico — testes e modo offline)
 // ============================================================
 // Gera texto/JSON previsiveis sem chamada de rede. O JSON e derivado do
@@ -253,17 +344,28 @@ export class StubLLMAdapter implements LLMPort {
 // ============================================================
 export interface LLMAdapterEnv {
   USE_STUBS: boolean;
+  /** Provedor real: 'gemini' (gratis) ou 'anthropic'. Default 'anthropic'. */
+  LLM_PROVIDER?: 'anthropic' | 'gemini';
   ANTHROPIC_API_KEY: string;
+  GEMINI_API_KEY?: string;
+  GEMINI_MODEL?: string;
 }
 
 /**
- * Cria o LLMPort apropriado.
- * - USE_STUBS=true OU sem ANTHROPIC_API_KEY -> StubLLMAdapter.
- * - caso contrario -> AnthropicLLMAdapter.
+ * Cria o LLMPort apropriado (degrada com seguranca — nunca derruba o boot):
+ * - USE_STUBS=true -> StubLLMAdapter.
+ * - LLM_PROVIDER='gemini' + GEMINI_API_KEY -> GeminiLLMAdapter (camada gratuita).
+ * - senao, com ANTHROPIC_API_KEY -> AnthropicLLMAdapter.
+ * - sem chave nenhuma -> StubLLMAdapter.
  */
 export function createLLMAdapter(env: LLMAdapterEnv): LLMPort {
-  if (env.USE_STUBS || !env.ANTHROPIC_API_KEY) {
-    return new StubLLMAdapter();
+  if (env.USE_STUBS) return new StubLLMAdapter();
+  const provider = env.LLM_PROVIDER ?? 'anthropic';
+  if (provider === 'gemini' && env.GEMINI_API_KEY) {
+    return new GeminiLLMAdapter(env.GEMINI_API_KEY, env.GEMINI_MODEL);
   }
-  return new AnthropicLLMAdapter(env.ANTHROPIC_API_KEY);
+  if (env.ANTHROPIC_API_KEY) {
+    return new AnthropicLLMAdapter(env.ANTHROPIC_API_KEY);
+  }
+  return new StubLLMAdapter();
 }
