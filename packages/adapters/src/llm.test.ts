@@ -5,7 +5,6 @@ import { z } from 'zod';
 import {
   StubLLMAdapter,
   AnthropicLLMAdapter,
-  GeminiLLMAdapter,
   createLLMAdapter,
   estimateCostCents,
   extractJson,
@@ -85,73 +84,5 @@ describe('createLLMAdapter', () => {
   it('retorna AnthropicLLMAdapter quando real + chave presente', () => {
     const a = createLLMAdapter({ USE_STUBS: false, ANTHROPIC_API_KEY: 'sk-test' });
     expect(a).toBeInstanceOf(AnthropicLLMAdapter);
-  });
-  it('retorna GeminiLLMAdapter quando LLM_PROVIDER=gemini + GEMINI_API_KEY', () => {
-    const a = createLLMAdapter({
-      USE_STUBS: false,
-      LLM_PROVIDER: 'gemini',
-      ANTHROPIC_API_KEY: '',
-      GEMINI_API_KEY: 'gkey',
-    });
-    expect(a).toBeInstanceOf(GeminiLLMAdapter);
-  });
-  it('gemini sem GEMINI_API_KEY cai no Anthropic (se houver) ou stub', () => {
-    const a = createLLMAdapter({
-      USE_STUBS: false,
-      LLM_PROVIDER: 'gemini',
-      ANTHROPIC_API_KEY: '',
-      GEMINI_API_KEY: '',
-    });
-    expect(a).toBeInstanceOf(StubLLMAdapter);
-  });
-});
-
-describe('GeminiLLMAdapter', () => {
-  function mockFetch(responseText: string, captured: { url?: string; body?: unknown }) {
-    return (async (url: string, init?: { body?: string }) => {
-      captured.url = url;
-      captured.body = init?.body ? JSON.parse(init.body) : undefined;
-      return {
-        ok: true,
-        json: async () => ({
-          candidates: [{ content: { parts: [{ text: responseText }] } }],
-          usageMetadata: { promptTokenCount: 11, candidatesTokenCount: 22 },
-        }),
-        text: async () => '',
-      };
-    }) as unknown as typeof fetch;
-  }
-
-  it('generateText monta a request correta e parseia a resposta', async () => {
-    const cap: { url?: string; body?: { contents?: unknown; systemInstruction?: unknown } } = {};
-    const gem = new GeminiLLMAdapter('gkey', 'gemini-2.0-flash', mockFetch('Ola do Gemini', cap));
-    const r = await gem.generateText({
-      model: 'claude-sonnet-4-6', // ignorado pelo adapter
-      system: 'voce e util',
-      maxTokens: 256,
-      messages: [{ role: 'user', content: 'gere algo' }],
-    });
-    expect(r.text).toBe('Ola do Gemini');
-    expect(r.usage.costCents).toBe(0); // camada gratuita
-    expect(r.usage.inputTokens).toBe(11);
-    expect(cap.url).toContain('models/gemini-2.0-flash:generateContent');
-    expect(cap.url).toContain('key=gkey');
-    expect(cap.body?.systemInstruction).toEqual({ parts: [{ text: 'voce e util' }] });
-    expect(cap.body?.contents).toEqual([{ role: 'user', parts: [{ text: 'gere algo' }] }]);
-  });
-
-  it('generateJson devolve objeto validado pelo parser', async () => {
-    const cap: Record<string, unknown> = {};
-    const json = '{"caption":"x","hashtags":["a"],"creativePrompt":"y"}';
-    const gem = new GeminiLLMAdapter('gkey', undefined, mockFetch(json, cap));
-    const schema = z.object({ caption: z.string(), hashtags: z.array(z.string()), creativePrompt: z.string() });
-    const r = await gem.generateJson({
-      model: 'x',
-      maxTokens: 256,
-      messages: [{ role: 'user', content: 'json' }],
-      parse: (raw) => schema.parse(raw),
-    });
-    expect(r.data.caption).toBe('x');
-    expect(r.data.hashtags).toEqual(['a']);
   });
 });

@@ -78,9 +78,6 @@ function buildCtx(fastify: FastifyInstance): AgentContext {
   const llm = createLLMAdapter({
     USE_STUBS: env.USE_STUBS,
     ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
-    LLM_PROVIDER: env.LLM_PROVIDER,
-    GEMINI_API_KEY: env.GEMINI_API_KEY,
-    GEMINI_MODEL: env.GEMINI_MODEL,
   });
   const ports: Ports = {
     llm,

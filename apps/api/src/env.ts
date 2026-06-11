@@ -59,11 +59,8 @@ const envSchema = z.object({
   TARGET_DAILY_REVENUE_BRL: z.coerce.number().int().positive().default(1000),
   WEEKLY_EBOOK_TARGET: z.coerce.number().int().min(1).default(3),
 
-  // LLM — provedor: 'gemini' (camada gratuita) ou 'anthropic'. Default anthropic.
-  LLM_PROVIDER: z.enum(['anthropic', 'gemini']).default('anthropic'),
+  // LLM
   ANTHROPIC_API_KEY: z.string().optional().default(''),
-  GEMINI_API_KEY: z.string().optional().default(''),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
 
   // Mercado (setor MARKET_RESEARCH — Serper.dev real; stub deterministico).
   // USE_STUBS=true (default) forca o stub mesmo com SERPER_API_KEY setada.
