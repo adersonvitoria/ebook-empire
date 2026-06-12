@@ -62,6 +62,17 @@ const envSchema = z.object({
   // LLM
   ANTHROPIC_API_KEY: z.string().optional().default(''),
 
+  // Storefront — chat de vendas 24/7 (POST /storefront/chat e PUBLICO e chama o
+  // LLM => vetor de custo). Guardrails defaults stub-friendly; ver docs/STOREFRONT.md.
+  // SALES_BOT_ENABLED=false => kill switch (sempre responde canned, sem chamar LLM).
+  SALES_BOT_ENABLED: boolish.default('true'),
+  // Teto diario GLOBAL de chamadas reais ao LLM (UTC). Estourou => canned.
+  SALES_BOT_DAILY_LIMIT: z.coerce.number().int().positive().default(300),
+  // Rate-limit por IP: mensagens permitidas por janela de 30 min (token bucket).
+  SALES_BOT_PER_IP_PER_30MIN: z.coerce.number().int().positive().default(15),
+  // Teto de tokens de saida do LLM por resposta do chat (curto = barato).
+  SALES_BOT_MAX_TOKENS: z.coerce.number().int().positive().default(600),
+
   // Mercado (setor MARKET_RESEARCH — Serper.dev real; stub deterministico).
   // USE_STUBS=true (default) forca o stub mesmo com SERPER_API_KEY setada.
   MARKET_DATA_PROVIDER: z.enum(['serper', 'stub']).default('stub'),

@@ -221,11 +221,82 @@ Nucleo **substancialmente completo e coerente entre modulos** — bem acima de u
 
 ---
 
+## Storefront (vitrine pública /oferta + chat de vendas 24/7)
+
+> Detalhe completo em `docs/STOREFRONT.md`. Canal **público** visitante→comprador: landing de
+> conversão `/oferta` (+ `/oferta/[slug]`), checkout PIX inline (reusa `POST /checkout`) e chat
+> de vendas 24/7 com guardrails de custo. Sem login, sem chrome admin. Dinheiro em `Int` centavos;
+> strings pt-BR; cópia 100% derivada server-side dos campos reais (sem campos de marketing inventados).
+
+**Verificação real (esta entrega):** build `core`+`agents` + `prisma:generate` + typecheck **5/5**;
+unit **367** (adapters 88 + agents 218 + api 61), 0 falhas; `next build` (standalone) **20/20** com
+`/oferta` e `/oferta/[slug]` como rotas `ƒ`; `pnpm --filter @ebook-empire/api e2e:storefront` novo
+**27/27** contra Postgres real; os 6 e2e existentes verdes (26/40/46/44/18/13, 0 falhas).
+
+### API — `apps/api/src/routes/storefront.ts` — FUNCIONAL (stub) + LLM real
+
+- **`GET /storefront/health`** — ping público da vitrine.
+- **`GET /storefront/featured`** — `StorefrontFeatured` do produto FEATURED. **FEATURED** = `Product`
+  `active=true` com `ebook.status=PUBLISHED` de **maior** `MarketOpportunity.potentialScore`; empate →
+  `Product.createdAt` desc, depois `ebook.createdAt` desc (sort em JS, relação a 2 hops). Sem candidato → `404 no_featured_product`.
+- **`GET /storefront/products/:slug`** — mesmo DTO para um produto específico (`404 product_not_found` se inexistente/inativo/não-PUBLISHED).
+- **`POST /storefront/chat`** — chat de vendas 24/7, **PÚBLICO e chama o LLM** → guardrails de custo (abaixo).
+- **DTO público** (`toOfferDTO`, `select`/map explícito): **nunca** expõe `contentMarkdown` nem registro Prisma cru. `priceFormatted` via `Intl.NumberFormat('pt-BR')` server-side; `subtitle` vem de `outline.subtitle`. Campos vazios (`angles`/`outline`) degradam para texto genérico honesto por `niche` — **sem** inventar capítulos/números/depoimentos.
+
+### Guardrails de custo do chat (CRÍTICO — provados no e2e)
+
+Ordem dos checks **antes** de chamar o LLM: (1) `SALES_BOT_ENABLED=false` → `200` canned; (2) teto diário
+global atingido (`dailyCounter` UTC vs `SALES_BOT_DAILY_LIMIT`) → `200` canned; (3) token bucket por
+`request.ip` vazio (cap=`SALES_BOT_PER_IP_PER_30MIN`, refil linear em janela fixa de 30 min) → `429` +
+`Retry-After`. Contador diário **só** incrementa em chamada REAL ao LLM (canned por kill-switch/teto/rate-limit
+**não** gasta cota). Histórico capado em `messages.slice(-8)`; `maxTokens=SALES_BOT_MAX_TOKENS`,
+`temperature=0.4`. Degradação graciosa: `generateText` em try/catch → qualquer erro/reply vazio = log
+`{ err, productSlug }` **sem** conteúdo (PII) e `200` canned. Estado em memória **por processo** (1 instância
+no Railway hoje; com `>1` cada uma tem seu teto). `trustProxy` **não** habilitado — o teto diário global
+protege o crédito de qualquer forma.
+
+### Web — `apps/web/app/oferta/*` + componentes — FUNCIONAL (UI)
+
+- Layout público isolado do admin: `oferta/layout.tsx` envolve a landing num container `fixed inset-0`
+  com tema claro próprio (`bg-[#f7f3ec]` + `[color-scheme:light]`) e fontes Fraunces+Manrope (`next/font`),
+  **sem** nav/AuthBar admin e **sem** login. `page.tsx`/`[slug]/page.tsx` só exportam `default` +
+  `generateMetadata` + `dynamic`; toda UI interativa em `components/` (`offer-page`, `offer-hero`,
+  `offer-states`, `checkout-form`, `sales-chat`) com `'use client'`.
+- **Checkout PIX inline:** QR gerado do payload EMV (`pixQrCode`) via `api.qrserver.com` (não `<img src>` cru);
+  copia-e-cola (`pixCopyPaste`) é a via primária com botão copiar + feedback. Anti-duplo-submit (CTA
+  desabilitado em `submitting`). CPF validado client-side (máscara + dígitos verificadores; enviado só dígitos).
+  Erros mapeados por `ApiError.status` (404/502/400/0) em pt-BR sem limpar o form. Cliente público **sem** `Authorization`.
+- **Chat de vendas:** widget flutuante; trata `429` (mensagem amigável de aguarde) e qualquer falha de rede/4xx/5xx
+  como mensagem do assistente — nunca quebra a página; envia só as últimas 8 mensagens; não persiste histórico.
+- Estados de alta qualidade: `OfferComingSoon` (404 "Em breve") e `OfferError` (rede/5xx com retry).
+
+### Envs `SALES_BOT_*` (opcionais — defaults stub-friendly)
+
+| Variável | Default | Efeito |
+|---|---|---|
+| `SALES_BOT_ENABLED` | `true` | `false` = kill switch (sempre canned, sem chamar LLM) |
+| `SALES_BOT_DAILY_LIMIT` | `300` | teto diário GLOBAL de chamadas reais ao LLM (UTC) → canned ao estourar |
+| `SALES_BOT_PER_IP_PER_30MIN` | `15` | mensagens por IP por janela de 30 min (token bucket) → `429` |
+| `SALES_BOT_MAX_TOKENS` | `600` | teto de tokens de saída por resposta do chat |
+
+Reusa `ANTHROPIC_API_KEY` / `USE_STUBS` / `CONTENT_MODEL` existentes — sem novo wiring de LLM. Com
+`USE_STUBS=true` o chat responde determinístico (stub).
+
+### Pendente / a evoluir
+
+- [ ] **`trustProxy` no Fastify** (`server.ts`, Fundação): hoje desligado → rate-limit por IP atrás do
+  proxy Railway vira ~global. O teto diário global cobre o crédito mesmo assim.
+- [ ] **Estado dos guardrails por-instância**: migrar para store compartilhado (Redis) se escalar para `>1` instância.
+- [ ] **Geração local do QR** (lib `qrcode`/`react-qr-code`) em vez do serviço externo `api.qrserver.com` — decisão de dono (exige `npm install`).
+- [ ] **Sem testes unitários no `apps/web`** (validação por `next build`, conforme convenção).
+
+---
+
 ## O que exige chave real (para sair do stub)
 
 | Chave | Habilita |
 |---|---|
-| `ANTHROPIC_API_KEY` | Geracao de conteudo e planejamento do CEO com LLM real (+ copy de outreach de afiliados) |
+| `ANTHROPIC_API_KEY` | Geracao de conteudo e planejamento do CEO com LLM real (+ copy de outreach de afiliados + **chat de vendas 24/7 do storefront**) |
 | `ASAAS_API_KEY` + `ASAAS_WEBHOOK_TOKEN` | Cobranca PIX e validacao de webhook reais |
 | `META_GRAPH_TOKEN` + `META_AD_ACCOUNT_ID` | Publicacao no Instagram e campanhas de ads reais |
 | `RESEND_API_KEY` | Envio real do email de entrega, dos alertas por email **e do outreach de afiliados** |

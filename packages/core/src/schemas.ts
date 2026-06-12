@@ -177,6 +177,66 @@ export type CheckoutResult = z.infer<typeof checkoutResultSchema>;
 export const paymentWebhookBodySchema = z.record(z.unknown());
 export type PaymentWebhookBody = z.infer<typeof paymentWebhookBodySchema>;
 
+// --- /storefront (vitrine publica) ---
+// Chat de vendas 24/7. Body validado em POST /storefront/chat. O servidor capa
+// o historico para ~8 mensagens antes de chamar o LLM (guardrail C, server-side);
+// o teto de 20 aqui e so anti-abuso de payload. role espelha LLMMessage do core.
+export const storefrontChatMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().min(1).max(2000),
+});
+export type StorefrontChatMessage = z.infer<typeof storefrontChatMessageSchema>;
+
+export const salesChatBodySchema = z.object({
+  productSlug: z.string().min(1),
+  messages: z.array(storefrontChatMessageSchema).min(1).max(20),
+});
+export type SalesChatBody = z.infer<typeof salesChatBodySchema>;
+
+// Resultado do chat. source='canned' = degradacao graciosa (desligado / teto
+// diario / erro do LLM) — sempre 200, nunca derruba a UX de venda.
+export const salesChatResultSchema = z.object({
+  reply: z.string(),
+  source: z.enum(['llm', 'canned']),
+});
+export type SalesChatResult = z.infer<typeof salesChatResultSchema>;
+
+// DTO publico da oferta — derivado server-side dos campos REAIS (Product/Ebook/
+// MarketOpportunity). NUNCA expor contentMarkdown nem campos admin. A copy de
+// venda (headline/painPoints/bullets) e montada no servidor. priceFormatted vem
+// pronto (Intl.NumberFormat pt-BR) para o front nao depender so de helper de browser.
+export const storefrontProductSchema = z.object({
+  slug: z.string(),
+  name: z.string(),
+  priceCents: z.number().int(),
+  currency: z.string(),
+  priceFormatted: z.string(),
+});
+export type StorefrontProduct = z.infer<typeof storefrontProductSchema>;
+
+export const storefrontFeaturedSchema = z.object({
+  product: storefrontProductSchema,
+  ebook: z.object({
+    title: z.string(),
+    niche: z.string(),
+    subtitle: z.string().optional(),
+    language: z.string(),
+    coverImagePath: z.string().optional(),
+    whatsInside: z.array(z.string()),
+  }),
+  copy: z.object({
+    headline: z.string(),
+    subheadline: z.string().optional(),
+    painPoints: z.array(z.string()),
+    bullets: z.array(z.string()),
+    guarantee: z.string().optional(),
+  }),
+  opportunity: z.object({
+    potentialScore: z.number().int(),
+  }),
+});
+export type StorefrontFeatured = z.infer<typeof storefrontFeaturedSchema>;
+
 // --- /delivery/:token ---
 export const deliveryTokenParamsSchema = z.object({
   token: z.string().min(16),

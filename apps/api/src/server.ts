@@ -38,11 +38,16 @@ import alertsRoutes from './routes/alerts.js';
 import financeRoutes from './routes/finance.js';
 import marketRoutes from './routes/market.js';
 import qualityRoutes from './routes/quality.js';
+import storefrontRoutes from './routes/storefront.js';
 import hotmartWebhookRoutes from './routes/webhooks/hotmart.js';
 import kiwifyWebhookRoutes from './routes/webhooks/kiwify.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({
+    // trustProxy: atras do proxy do Railway, request.ip reflete o X-Forwarded-For
+    // (IP real do cliente) em vez do IP do proxy — necessario para o rate-limit
+    // POR IP do chat de vendas (/storefront/chat) funcionar de verdade.
+    trustProxy: true,
     logger: {
       level: env.NODE_ENV === 'development' ? 'debug' : 'info',
     },
@@ -84,6 +89,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(financeRoutes);
   await app.register(marketRoutes);
   await app.register(qualityRoutes);
+  await app.register(storefrontRoutes);
   await app.register(hotmartWebhookRoutes);
   await app.register(kiwifyWebhookRoutes);
 

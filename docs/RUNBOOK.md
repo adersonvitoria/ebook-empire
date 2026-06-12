@@ -595,3 +595,86 @@ Parametros: `AFFILIATE_OUTREACH_COOLDOWN_DAYS` (default 7), `AFFILIATE_COMMISSIO
 | `SEND_AFFILIATE_EMAIL` | nao | contata 1 afiliado especifico (`runForAffiliate`) | `{ affiliateId }` |
 
 Como qualquer acao do COO: aparecem em `GET /crm/actions`, sao auditadas com `beforeState`/`afterState`, respeitam `maxAutoActionsPerCycle`/cooldown/kill switch, e `PAUSE_LISTING` pode ser revertida via `POST /crm/actions/:id/rollback` (as demais sao `reversible=false` — rollback no-op idempotente). Ver §9 para a operacao do Command Center.
+
+---
+
+## 15. Operar e divulgar a vitrine publica (/oferta)
+
+> A vitrine e o canal **publico** de vendas (visitante → comprador): landing de conversao `/oferta`
+> (+ `/oferta/[slug]`), checkout PIX na propria pagina e chat de vendas 24/7. **Sem login, sem chrome
+> admin.** Detalhe de arquitetura em `docs/STOREFRONT.md`; estado em `docs/STATUS.md` (secao Storefront).
+> Dinheiro em `Int` centavos; strings pt-BR; a copy e derivada server-side dos campos reais (nada inventado).
+
+### 15.1 A URL publica para divulgar
+
+```
+https://ebook-empire-web-one.vercel.app/oferta                 # produto FEATURED (maior potencial)
+https://ebook-empire-web-one.vercel.app/oferta/<slug>          # um produto especifico
+```
+
+`/oferta` mostra o **produto em destaque** automaticamente: o `Product` ativo PUBLISHED de maior
+`MarketOpportunity.potentialScore` (empate → mais recente). Conforme o pipeline publica/ranqueia
+produtos, o destaque troca sozinho — **e a unica URL que voce precisa divulgar** no dia a dia. Para
+campanhas de um titulo especifico, use `/oferta/<slug>` (pegue o `slug` em
+`GET https://ebook-empire-api.up.railway.app/storefront/featured` ou na rota admin `/ebooks`).
+
+Se ainda nao ha produto publicado, a pagina mostra um estado **"Em breve"** de alta qualidade (nao
+um erro) — gere/publique um ebook primeiro (ver §3 e §11.4: os 2 GATES).
+
+### 15.2 Smoke test E2E da vitrine (Postgres real, modo stub)
+
+```bash
+pnpm --filter @ebook-empire/api e2e:storefront
+```
+
+Resultado esperado: `PASSARAM: 27   FALHARAM: 0`. Exercita featured-por-potencial, `products/:slug`
+200/404, checkout 201 + `pixCopyPaste`, chat 200 (stub), rate-limit 429 (15 OKs → 429 com `Retry-After`)
+e kill-switch canned (em subprocesso). Use como smoke test apos qualquer mudanca no storefront.
+
+### 15.3 Como divulgar de graca (trafego organico R$0 → /oferta)
+
+Passos sem custo para mandar visitantes a `/oferta` (todos com **UTM** para fechar a atribuicao —
+o checkout grava `utmSource/Medium/Campaign/Content/Term` capturados da query string):
+
+1. **WhatsApp (status + grupos/listas de transmissao):** poste o link `/oferta?utm_source=whatsapp&utm_medium=status`.
+   E o canal de maior conversao no Brasil; a landing e mobile-first e o checkout PIX cabe na mesma tela.
+2. **Instagram:** link na bio + chamada nos Stories/Reels com "link na bio". Use um link por campanha
+   (`/oferta?utm_source=instagram&utm_medium=bio`). Os metadados Open Graph (`title`/`description`/`og:image`
+   da capa, quando houver) ja saem prontos no compartilhamento.
+3. **Grupos/comunidades do nicho** (Telegram, Facebook, Reddit/foruns pt-BR) onde a oferta seja util e
+   permitida — sempre agregando valor, com `utm_source=<comunidade>`.
+4. **Bio/assinatura** de email e perfis pessoais apontando para `/oferta`.
+5. **Conteudo curto** (um post/thread por dor que o ebook resolve) terminando no link com `utm_medium=organico`.
+
+Acompanhe os resultados sem gastar nada: `GET /analytics/kpis` (publica) e `/crm/finance` mostram
+receita/`by-campaign` (ROAS por `utmCampaign`). Quando quiser escalar com pago, ligue o Meta Ads (§5).
+
+### 15.4 O chat de vendas e seus limites (defesa de credito Anthropic)
+
+O `POST /storefront/chat` e **publico e chama o LLM** — por isso tem guardrails server-side. Defaults
+(envs opcionais em `apps/api/src/env.ts`; sem configurar nada, o boot nao quebra):
+
+| Variavel | Default | Efeito |
+|---|---|---|
+| `SALES_BOT_ENABLED` | `true` | `false` = **kill switch**: sempre responde *canned* (sem chamar o LLM). Mata o gasto sem deploy de codigo — basta a env + redeploy no Railway. |
+| `SALES_BOT_DAILY_LIMIT` | `300` | **Teto diario GLOBAL** de chamadas reais ao LLM (UTC). Ao estourar, responde *canned* ate virar o dia. E a trava dura de credito. |
+| `SALES_BOT_PER_IP_PER_30MIN` | `15` | Rate-limit por IP (token bucket, janela fixa 30 min). Excedeu → `429` + header `Retry-After` (o front pede para aguardar). |
+| `SALES_BOT_MAX_TOKENS` | `600` | Teto de tokens de saida por resposta (respostas curtas = baratas). |
+
+Comportamento importante:
+
+- **So conta cota quem realmente chama o LLM.** Canned por kill-switch / teto diario / rate-limit
+  **nao** consome a cota diaria.
+- **Degrada gracioso:** se o LLM falhar (timeout, sem chave, erro), responde uma mensagem *canned*
+  util (ancorada no nome + preco reais) com `200` — nunca derruba a pagina. Nunca loga o conteudo das
+  mensagens (PII): so `{ err, productSlug }`.
+- **Ancoragem honesta:** o bot so usa fatos reais do produto (nome, descricao/titulo, capitulos do
+  outline, preco, entrega por email apos o PIX). **Nao** inventa precos, bonus, cupons ou promessas.
+- **Estado por instancia:** os contadores vivem em memoria do processo. Hoje ha **1 instancia** no
+  Railway. Com `>1`, cada uma teria seu proprio teto (gasto = N × limite) — migrar para Redis se escalar.
+- **`trustProxy` desligado:** atras do proxy do Railway o rate-limit por IP pode virar ~global; o
+  **teto diario global** cobre o credito mesmo assim.
+
+Para desligar o bot rapido em producao: setar `SALES_BOT_ENABLED=false` nas Variables do Railway e
+redeploy. A landing continua vendendo normalmente (o checkout PIX nao depende do chat); o widget passa
+a responder a mensagem canned que ja empurra para o formulario.
